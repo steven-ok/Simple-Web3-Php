@@ -203,13 +203,14 @@ class ABI
     }
 
  
-    private function GetSignatureFromFunction_Inputs($function_inputs)
+    private function GetSignatureFromFunction_Inputs($function_inputs, $isArray = false)
     {
         $signature = "(";
         foreach($function_inputs as $input)
         {
             $type = $input->type;
-            if ($type == 'tuple') $type = $this->GetSignatureFromFunction_Inputs($input->components);
+            if ($type == 'tuple[]') $type = $this->GetSignatureFromFunction_Inputs($input->components, true);
+            else if ($type == 'tuple') $type = $this->GetSignatureFromFunction_Inputs($input->components);
             else if ($type == 'uint' || $type == 'int') $type .= '256';
             else if ($type == 'uint[]') $type = 'uint256[]';
             else if ($type == 'int[]') $type = 'int256[]';
@@ -219,6 +220,10 @@ class ABI
 
         if(count($function_inputs) > 0)  $signature = substr($signature, 0, -1); 
         $signature .= ')';
+
+        if ($isArray) {
+            $signature .= '[]';
+        }
 
         return $signature;
     }
@@ -323,19 +328,22 @@ class ABI
 	
 
 
-    private static function EncodeInput_Array($input_type, $inputData)
-    { 
+    private static function EncodeInput_Array($input_type, $inputData, $components = null)
+    {
         $inputs = [];
         $currentDynamicIndex = count($inputData) * self::NUM_ZEROS / 2;
         
         //array lenght
         $hashData = self::EncodeInput_UInt(count($inputData));
-          
+
         foreach($inputData as $pos => $element) 
         {      
             $input = new stdClass(); 
             $input->type = $input_type;
-            $inputs []= $input; 
+            if ($components != null) {
+                $input->components = $components;
+            }
+            $inputs []= $input;
             $hashData .= self::EncodeInput($input, $element, 1, $currentDynamicIndex);  
             $currentDynamicIndex += strlen($input->hash) / 2; 
         }
@@ -355,7 +363,7 @@ class ABI
 
  
     private static function EncodeInput($input, $inputData, $round, &$currentDynamicIndex)
-    { 
+    {
         $hash = "";
 
         if($round == 1)
@@ -367,10 +375,10 @@ class ABI
             if (Utils::string_contains($input->type, '['))
             {
                 $last_array_marker = strrpos($input->type, '[');  
-                $clean_type = substr($input->type, 0, $last_array_marker); 
- 
-                $input->hash =  self::EncodeInput_Array($clean_type, $inputData);
-                $res = self::EncodeInput_UInt($currentDynamicIndex); 
+                $clean_type = substr($input->type, 0, $last_array_marker);
+
+                $input->hash =  self::EncodeInput_Array($clean_type, $inputData, $input->components);
+                $res = self::EncodeInput_UInt($currentDynamicIndex);
                 return $res; 
             }
             else if ($varType == VariableType::Tuple)
